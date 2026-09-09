@@ -18,7 +18,7 @@ alerts on the grid, grouped by severity (CRITICAL / MAJOR / MINOR).
 ## Package layout
 
 ```
-cmk/plugins/netapp_storagegrid/
+cmk_addons/plugins/netapp_storagegrid/
 ├── libexec/
 │   └── agent_netapp_storagegrid       # the special agent executable
 ├── server_side_calls/
@@ -37,9 +37,9 @@ cmk/plugins/netapp_storagegrid/
 This source tree mirrors the layout Checkmk expects for a local extension
 package (MKP). To install it on a Checkmk 2.5 site:
 
-1. Copy the contents of `cmk/plugins/netapp_storagegrid/` into
-   `local/lib/python3/cmk/plugins/netapp_storagegrid/` on the target site
-   (or package it as an MKP with `mkp package` and install it via
+1. Copy the contents of `cmk_addons/plugins/netapp_storagegrid/` into
+   `local/lib/python3/cmk_addons/plugins/netapp_storagegrid/` on the target
+   site (or package it as an MKP with `mkp package` and install it via
    **Setup > Extension packages**).
 2. Ensure `libexec/agent_netapp_storagegrid` is executable
    (`chmod +x`).

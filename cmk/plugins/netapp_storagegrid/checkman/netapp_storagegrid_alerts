@@ -1,0 +1,33 @@
+title: NetApp StorageGRID Alerts
+agents: special-agent(netapp_storagegrid)
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors currently active (unresolved) alerts on a NetApp
+ StorageGRID grid, as reported by the Grid Management REST API
+ ({GET /api/v3/grid/alerts}).
+
+ A single service is always discovered, since an empty list of alerts
+ does not mean there is nothing to monitor.
+
+ The overall service state is derived from the highest severity among
+ the currently active alerts (CRITICAL, MAJOR, MINOR). The monitoring
+ state used for each severity can be configured via the "NetApp
+ StorageGRID alerts" rule set. By default, CRITICAL alerts result in a
+ CRIT state, and MAJOR/MINOR alerts result in a WARN state.
+
+ By default, alerts that have been silenced, or that are inhibited by
+ another already-counted alert for the same condition, are excluded
+ from the state and counts. This can be changed in the rule set.
+
+ The number of alerts per severity is also reported as performance
+ data ({netapp_storagegrid_alerts_critical}, {netapp_storagegrid_alerts_major},
+ {netapp_storagegrid_alerts_minor}), and up to 20 of the most recent
+ alerts are listed in the service details.
+
+item:
+ This check does not use an item, only one service per host is created.
+
+discovery:
+ One service is created unconditionally.

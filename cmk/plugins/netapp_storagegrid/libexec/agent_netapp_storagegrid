@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+# Copyright (C) 2024 Checkmk GmbH - License: GNU General Public License v2
+# This file is part of Checkmk (https://checkmk.com). It is subject to the terms and
+# conditions defined in the file COPYING, which is part of this source code package.
+"""agent_netapp_storagegrid
+
+Checkmk special agent for monitoring NetApp StorageGRID via the Grid Management REST API.
+
+Currently fetches the list of active (unresolved) alerts from
+GET /api/v3/grid/alerts and writes them as the <<<netapp_storagegrid_alerts>>> section.
+"""
+
+import argparse
+import json
+import sys
+from collections.abc import Sequence
+
+import requests
+import urllib3
+
+from cmk.password_store.v1_unstable import parser_add_secret_option, resolve_secret_option, Secret
+from cmk.server_side_programs.v1_unstable import HostnameValidationAdapter
+
+PASSWORD_OPTION = "password"
+
+API_VERSION = "v3"
+
+
+def parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
+    prog, description = __doc__.split("\n\n", maxsplit=1)
+    parser = argparse.ArgumentParser(prog=prog, description=description)
+
+    parser.add_argument(
+        "--debug", action="store_true", help="Debug mode: let Python exceptions come through"
+    )
+    parser.add_argument("--verbose", "-v", action="count", default=0, help="Be more verbose")
+
+    parser.add_argument(
+        "--username", "-u", required=True, help="Grid Manager user name with access to alerts"
+    )
+    parser_add_secret_option(
+        parser,
+        long=f"--{PASSWORD_OPTION}",
+        required=True,
+        help="Grid Manager password",
+    )
+    parser.add_argument(
+        "--port", "-p", type=int, default=443, help="Port to connect to (default: 443)"
+    )
+    parser.add_argument(
+        "--proto",
+        choices=["http", "https"],
+        default="https",
+        help="Use 'http' or 'https' (default: https)",
+    )
+    parser.add_argument(
+        "--no-cert-check", action="store_true", help="Disable TLS certificate verification"
+    )
+    parser.add_argument(
+        "--cert-server-name",
+        help="Expected common/subject-alt name of the TLS certificate presented by the server",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=10.0,
+        help="API call timeout in seconds (default: 10)",
+    )
+    parser.add_argument("host", metavar="HOST", help="NetApp StorageGRID Grid Manager address")
+
+    return parser.parse_args(argv)
+
+
+class AuthenticationError(Exception):
+    pass
+
+
+def _authorize(
+    session: requests.Session, base_url: str, username: str, password: str, timeout: float
+) -> str:
+    response = session.post(
+        f"{base_url}/api/{API_VERSION}/authorize",
+        json={
+            "username": username,
+            "password": password,
+            "cookie": False,
+            "csrfToken": False,
+        },
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    token = response.json().get("data")
+    if not token:
+        raise AuthenticationError(
+            "Authentication with the StorageGRID Grid Management API did not return a token"
+        )
+    return str(token)
+
+
+def _fetch_alerts(
+    session: requests.Session, base_url: str, token: str, timeout: float
+) -> list[object]:
+    response = session.get(
+        f"{base_url}/api/{API_VERSION}/grid/alerts",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    data = response.json().get("data", [])
+    return list(data) if isinstance(data, list) else []
+
+
+def agent_netapp_storagegrid_main(args: argparse.Namespace) -> int:
+    if args.no_cert_check:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    base_url = f"{args.proto}://{args.host}:{args.port}"
+    password: Secret[str] = resolve_secret_option(args, PASSWORD_OPTION)
+
+    with requests.Session() as session:
+        session.verify = not args.no_cert_check
+        if not args.no_cert_check and args.cert_server_name:
+            session.mount(base_url, HostnameValidationAdapter(args.cert_server_name))
+
+        token = _authorize(session, base_url, args.username, password.reveal(), args.timeout)
+        alerts = _fetch_alerts(session, base_url, token, args.timeout)
+
+    sys.stdout.write("<<<netapp_storagegrid_alerts:sep(0)>>>\n")
+    sys.stdout.write(json.dumps(alerts) + "\n")
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    try:
+        return agent_netapp_storagegrid_main(args)
+    except Exception as exc:
+        if args.debug:
+            raise
+        sys.stderr.write(f"Connection error: {exc}\n")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

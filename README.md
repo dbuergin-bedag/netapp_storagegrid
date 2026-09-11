@@ -10,10 +10,15 @@ Grid Management REST API.
 ## What it does
 
 The special agent authenticates against the Grid Management API
-(`POST /api/v3/authorize`) and currently fetches active alerts
-(`GET /api/v3/grid/alerts`). The first check plugin shipped with this
-package, **NetApp StorageGRID Alerts**, reports the currently active
-alerts on the grid, grouped by severity (CRITICAL / MAJOR / MINOR).
+(`POST /api/v3/authorize`) and fetches active alerts
+(`GET /api/v3/grid/alerts`) as well as tenant account usage and quotas
+(`GET /api/v3/grid/accounts-cache`). Two check plugins are shipped with
+this package:
+
+- **NetApp StorageGRID Alerts** reports the currently active alerts on
+  the grid, grouped by severity (CRITICAL / MAJOR / MINOR).
+- **NetApp StorageGRID Tenant Quota** reports, per tenant account, the
+  percentage of the configured object quota that is currently used.
 
 ## Package layout
 
@@ -25,11 +30,14 @@ cmk_addons/plugins/netapp_storagegrid/
 │   └── special_agent.py               # builds the special agent command line
 ├── rulesets/
 │   ├── special_agent.py               # Setup rule: agent connection (host/credentials)
-│   └── alerts.py                      # Setup rule: check parameters (per-severity states)
+│   ├── alerts.py                      # Setup rule: check parameters (per-severity states)
+│   └── tenant_quota.py                # Setup rule: check parameters (quota usage levels)
 ├── agent_based/
-│   └── alerts.py                      # parse/discover/check for the alerts service
+│   ├── alerts.py                      # parse/discover/check for the alerts service
+│   └── tenant_quota.py                # parse/discover/check for the tenant quota service
 └── checkman/
-    └── netapp_storagegrid_alerts      # man page shown in the Setup UI
+    ├── netapp_storagegrid_alerts      # man page shown in the Setup UI
+    └── netapp_storagegrid_tenant_quota
 ```
 
 ## Installation
@@ -52,11 +60,16 @@ package (MKP). To install it on a Checkmk 2.5 site:
    the Grid Manager host, username, password, port/protocol and TLS
    certificate verification.
 2. Assign the rule to the host representing the StorageGRID Admin Node.
-3. Run service discovery. A single service, **NetApp StorageGRID Alerts**,
-   will be discovered.
+3. Run service discovery. A **NetApp StorageGRID Alerts** service and one
+   **NetApp StorageGRID Tenant Quota** service per tenant account will be
+   discovered.
 4. Optionally configure **NetApp StorageGRID alerts** (check parameters
    rule set) to change the monitoring state reported for each alert
    severity.
+5. Optionally configure **NetApp StorageGRID tenant quota** (check
+   parameters rule set) to change the WARN/CRIT levels for the percentage
+   of a tenant's object quota that is used (default: WARN at 80%, CRIT at
+   90%). Tenants without a configured quota are always reported OK.
 
 ## Notes on the API schema
 
@@ -71,3 +84,12 @@ deliberately defensive: it looks up several common field name variants
 and falls back to safe defaults instead of raising, so it should keep
 working even if a given StorageGRID release uses slightly different field
 names.
+
+The tenant quota check uses `GET /api/v3/grid/accounts-cache` (documented in
+`docu/grid-combined-schema.yaml`), which returns each tenant account's
+`dataBytes` (used bytes) together with its `policy.quotaObjectBytes`
+(configured object quota, `null` if unlimited) in a single call. This
+endpoint has no pagination marker, so the agent requests a high `limit`
+(500) to retrieve all tenants in one page; cached usage data can lag up to
+15 minutes behind the actual state.
+

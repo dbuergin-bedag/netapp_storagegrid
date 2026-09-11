@@ -1,0 +1,37 @@
+title: NetApp StorageGRID Tenant Quota
+agents: special-agent(netapp_storagegrid)
+catalog: os/storage
+license: GPLv2
+distribution: check_mk
+description:
+ This check monitors the object storage quota usage of a NetApp
+ StorageGRID tenant account (Storage Tenant Account / Organization), as
+ reported by the Grid Management REST API
+ ({GET /api/v3/grid/accounts-cache}).
+
+ One service is discovered per tenant account. The service reports the
+ percentage of the tenant's configured object quota
+ ({policy.quotaObjectBytes}) that is currently used
+ ({dataBytes}). The monitoring state is derived from configurable
+ WARN/CRIT levels on this percentage, via the "NetApp StorageGRID tenant
+ quota" rule set. By default, the state is WARN at 80% and CRIT at 90%.
+
+ Tenants that do not have a quota configured are always reported OK,
+ since there is nothing to exceed.
+
+ The used bytes, and, if a quota is configured, the quota bytes and the
+ percentage used, are reported as performance data
+ ({netapp_storagegrid_tenant_used_bytes},
+ {netapp_storagegrid_tenant_quota_bytes},
+ {netapp_storagegrid_tenant_quota_used_percent}).
+
+ Note: tenant usage data in the StorageGRID cache can take up to 15
+ minutes to reflect recent changes.
+
+item:
+ The display name of the tenant account. Tenant account names are only
+ guaranteed to be unique by StorageGRID convention, not enforced by the
+ API.
+
+discovery:
+ One service is created per tenant account.

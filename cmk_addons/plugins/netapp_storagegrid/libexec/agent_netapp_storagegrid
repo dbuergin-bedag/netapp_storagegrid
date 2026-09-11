@@ -6,8 +6,11 @@
 
 Checkmk special agent for monitoring NetApp StorageGRID via the Grid Management REST API.
 
-Currently fetches the list of active (unresolved) alerts from
-GET /api/v3/grid/alerts and writes them as the <<<netapp_storagegrid_alerts>>> section.
+Fetches the list of active (unresolved) alerts from GET /api/v3/grid/alerts
+and writes them as the <<<netapp_storagegrid_alerts>>> section, and the list
+of tenant accounts (including usage and quota) from
+GET /api/v3/grid/accounts-cache, written as the <<<netapp_storagegrid_tenants>>>
+section.
 """
 
 import argparse
@@ -110,6 +113,21 @@ def _fetch_alerts(
     return list(data) if isinstance(data, list) else []
 
 
+def _fetch_tenants(
+    session: requests.Session, base_url: str, token: str, timeout: float
+) -> list[object]:
+    response = session.get(
+        f"{base_url}/api/{API_VERSION}/grid/accounts-cache",
+        headers={"Authorization": f"Bearer {token}"},
+        # accounts-cache has no pagination marker, so ask for a high limit to get all tenants
+        params={"limit": 500},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    data = response.json().get("data", [])
+    return list(data) if isinstance(data, list) else []
+
+
 def agent_netapp_storagegrid_main(args: argparse.Namespace) -> int:
     if args.no_cert_check:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -124,9 +142,12 @@ def agent_netapp_storagegrid_main(args: argparse.Namespace) -> int:
 
         token = _authorize(session, base_url, args.username, password.reveal(), args.timeout)
         alerts = _fetch_alerts(session, base_url, token, args.timeout)
+        tenants = _fetch_tenants(session, base_url, token, args.timeout)
 
     sys.stdout.write("<<<netapp_storagegrid_alerts:sep(0)>>>\n")
     sys.stdout.write(json.dumps(alerts) + "\n")
+    sys.stdout.write("<<<netapp_storagegrid_tenants:sep(0)>>>\n")
+    sys.stdout.write(json.dumps(tenants) + "\n")
     return 0
 
 
